@@ -8,6 +8,7 @@
 #include "statusbarhelper.h"
 
 class QDockWidget;
+class QSystemTrayIcon;
 
 namespace vnotex
 {
@@ -16,6 +17,8 @@ namespace vnotex
     class ViewArea;
     class Event;
     class OutlineViewer;
+
+    enum { RESTART_EXIT_CODE = 1000 };
 
     class MainWindow : public QMainWindow
     {
@@ -42,6 +45,12 @@ namespace vnotex
 
         void setStayOnTop(bool p_enabled);
 
+        void restart();
+
+        void showMainWindow();
+
+        void quitApp();
+
     signals:
         void mainWindowStarted();
 
@@ -55,6 +64,8 @@ namespace vnotex
 
     protected:
         void closeEvent(QCloseEvent *p_event) Q_DECL_OVERRIDE;
+
+        void changeEvent(QEvent *p_event) Q_DECL_OVERRIDE;
 
     private slots:
         void closeOnQuit();
@@ -100,6 +111,8 @@ namespace vnotex
 
         void setupShortcuts();
 
+        void setupSystemTray();
+
         ToolBarHelper m_toolBarHelper;
 
         StatusBarHelper m_statusBarHelper;
@@ -117,6 +130,14 @@ namespace vnotex
         QVector<QDockWidget *> m_docks;
 
         bool m_layoutReset = false;
+
+        // -1: do not request to quit;
+        // 0 and above: exit code.
+        int m_requestQuit = -1;
+
+        Qt::WindowStates m_windowOldState = Qt::WindowMinimized;
+
+        QSystemTrayIcon *m_trayIcon = nullptr;
     };
 } // ns vnotex
 

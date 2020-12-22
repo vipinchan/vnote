@@ -2,6 +2,7 @@
 
 #include <QComboBox>
 #include <QFormLayout>
+#include <QCheckBox>
 
 #include <widgets/widgetsfactory.h>
 #include <core/coreconfig.h>
@@ -55,11 +56,24 @@ void GeneralPage::setupUI()
                 this, &GeneralPage::pageIsChanged);
     }
 #endif
+
+#if !defined(Q_OS_MACOS)
+    {
+        const QString label(tr("Minimize to system tray"));
+        m_systemTrayCheckBox = WidgetsFactory::createCheckBox(label, this);
+        m_systemTrayCheckBox->setToolTip(tr("Minimize to system tray when closed"));
+        mainLayout->addRow(m_systemTrayCheckBox);
+        addSearchItem(label, m_systemTrayCheckBox->toolTip(), m_systemTrayCheckBox);
+        connect(m_systemTrayCheckBox, &QCheckBox::stateChanged,
+                this, &GeneralPage::pageIsChanged);
+    }
+#endif
 }
 
 void GeneralPage::loadInternal()
 {
     const auto &coreConfig = ConfigMgr::getInst().getCoreConfig();
+    const auto &sessionConfig = ConfigMgr::getInst().getSessionConfig();
 
     {
         int idx = m_localeComboBox->findData(coreConfig.getLocale());
@@ -68,16 +82,21 @@ void GeneralPage::loadInternal()
     }
 
     if (m_openGLComboBox) {
-        const auto &sessionConfig = ConfigMgr::getInst().getSessionConfig();
         int idx = m_openGLComboBox->findData(sessionConfig.getOpenGL());
         Q_ASSERT(idx != -1);
         m_openGLComboBox->setCurrentIndex(idx);
+    }
+
+    if (m_systemTrayCheckBox) {
+        int toTray = sessionConfig.getMinimizeToSystemTray();
+        m_systemTrayCheckBox->setChecked(toTray > 0);
     }
 }
 
 void GeneralPage::saveInternal()
 {
     auto &coreConfig = ConfigMgr::getInst().getCoreConfig();
+    auto &sessionConfig = ConfigMgr::getInst().getSessionConfig();
 
     {
         auto locale = m_localeComboBox->currentData().toString();
@@ -85,9 +104,13 @@ void GeneralPage::saveInternal()
     }
 
     if (m_openGLComboBox) {
-        auto &sessionConfig = ConfigMgr::getInst().getSessionConfig();
         int opt = m_openGLComboBox->currentData().toInt();
         sessionConfig.setOpenGL(static_cast<SessionConfig::OpenGL>(opt));
+    }
+
+    if (m_systemTrayCheckBox) {
+        // This will override the -1 state. That is fine.
+        sessionConfig.setMinimizeToSystemTray(m_systemTrayCheckBox->isChecked());
     }
 }
 

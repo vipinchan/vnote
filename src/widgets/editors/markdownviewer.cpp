@@ -7,12 +7,14 @@
 #include <QMimeData>
 #include <QScopedPointer>
 
-#include "../webpage.h"
 #include "markdownvieweradapter.h"
 #include "previewhelper.h"
 #include <utils/clipboardutils.h>
 #include <utils/fileutils.h>
 #include <utils/utils.h>
+#include <utils/widgetutils.h>
+#include <core/configmgr.h>
+#include <core/editorconfig.h>
 #include "../widgetsfactory.h"
 
 using namespace vnotex;
@@ -28,25 +30,15 @@ MarkdownViewer::MarkdownViewer(MarkdownViewerAdapter *p_adapter,
                                const QColor &p_background,
                                qreal p_zoomFactor,
                                QWidget *p_parent)
-    : WebViewer(p_parent),
+    : WebViewer(p_background, p_zoomFactor, p_parent),
       m_adapter(p_adapter)
 {
     m_adapter->setParent(this);
 
-    auto page = new WebPage(this);
-    setPage(page);
-
-    // Avoid white flash before loading content.
-    // Setting Qt::transparent will force GrayScale antialias rendering.
-    page->setBackgroundColor(p_background);
-
-    if (!Utils::fuzzyEqual(p_zoomFactor, 1.0)) {
-        setZoomFactor(p_zoomFactor);
-    }
-
     auto channel = new QWebChannel(this);
     channel->registerObject(QStringLiteral("vxAdapter"), m_adapter);
-    page->setWebChannel(channel);
+
+    page()->setWebChannel(channel);
 
     connect(QApplication::clipboard(), &QClipboard::changed,
             this, &MarkdownViewer::handleClipboardChanged);
@@ -60,7 +52,7 @@ MarkdownViewer::MarkdownViewer(MarkdownViewerAdapter *p_adapter,
             });
 
     connect(m_adapter, &MarkdownViewerAdapter::crossCopyReady,
-            this, [this](quint64 p_id, quint64 p_timeStamp, const QString &p_html) {
+            this, [](quint64 p_id, quint64 p_timeStamp, const QString &p_html) {
                 Q_UNUSED(p_id);
                 Q_UNUSED(p_timeStamp);
                 std::unique_ptr<QMimeData> mimeData(new QMimeData());
@@ -122,6 +114,19 @@ void MarkdownViewer::contextMenuEvent(QContextMenuEvent *p_event)
         }
     }
 #endif
+
+    if (!hasSelection()) {
+        auto firstAct = actions.isEmpty() ? nullptr : actions[0];
+        auto editAct = new QAction(tr("&Edit"), menu.data());
+        WidgetUtils::addActionShortcutText(editAct,
+                                           ConfigMgr::getInst().getEditorConfig().getShortcut(EditorConfig::Shortcut::EditRead));
+        connect(editAct, &QAction::triggered,
+                this, &MarkdownViewer::editRequested);
+        menu->insertAction(firstAct, editAct);
+        if (firstAct) {
+            menu->insertSeparator(firstAct);
+        }
+    }
 
     // We need to replace the "Copy Image" action:
     // - the default one use the fully-encoded URL to fetch the image while
@@ -292,21 +297,20 @@ void MarkdownViewer::hideUnusedActions(QMenu *p_menu)
         }
     }
 
-    // SavePage.
-    QAction *act = pageAction(QWebEnginePage::SavePage);
-    unusedActions.append(act);
+    QVector<QWebEnginePage::WebAction> pageActions = { QWebEnginePage::SavePage,
+                                                       QWebEnginePage::ViewSource,
+                                                       QWebEnginePage::DownloadImageToDisk,
+                                                       QWebEnginePage::DownloadLinkToDisk,
+                                                       QWebEnginePage::OpenLinkInThisWindow,
+                                                       QWebEnginePage::OpenLinkInNewBackgroundTab,
+                                                       QWebEnginePage::OpenLinkInNewTab,
+                                                       QWebEnginePage::OpenLinkInNewWindow
+                                                     };
 
-    // ViewSource.
-    act = pageAction(QWebEnginePage::ViewSource);
-    unusedActions.append(act);
-
-    // DownloadImageToDisk.
-    act = pageAction(QWebEnginePage::DownloadImageToDisk);
-    unusedActions.append(act);
-
-    // DownloadLinkToDisk.
-    act = pageAction(QWebEnginePage::DownloadLinkToDisk);
-    unusedActions.append(act);
+    for (auto pageAct : pageActions) {
+        auto act = pageAction(pageAct);
+        unusedActions.append(act);
+    }
 
     for (auto it : unusedActions) {
         if (it) {
@@ -387,7 +391,7 @@ void MarkdownViewer::setupCrossCopyMenu(QMenu *p_menu, QAction *p_copyAct)
     auto subMenu = WidgetsFactory::createMenu(tr("Cross Copy"), p_menu);
 
     for (const auto &target : targets) {
-        auto act = subMenu->addAction(target);
+        auto act = subMenu->addAction(m_adapter->getCrossCopyTargetDisplayName(target));
         act->setData(target);
     }
 

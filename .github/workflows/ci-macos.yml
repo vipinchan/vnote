@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-    VNOTE_VER: 3.0.0-beta.2
+    VNOTE_VER: 3.0.0-beta.3
 
 jobs:
   build-linux:
@@ -90,7 +90,6 @@ jobs:
       - name: Mac Deploy
         run: |
           pushd src
-          sed -i -e 's/com.yourcompany.vnote/com.vnotex.vnote/g' vnote.app/Contents/Info.plist
           macdeployqt vnote.app
           python ${{runner.workspace}}/macdeployqtfix/macdeployqtfix.py vnote.app/Contents/MacOS/vnote $Qt5_Dir
           # Fix Helpers/QtWebEngineProcess.app
@@ -109,7 +108,8 @@ jobs:
           mv ../../src/vnote.app ./
           ln -s /Applications ./Applications
           popd
-          hdiutil create -srcfolder ./distrib/vnote -format UDBZ ./vnote-mac-x64_v${{env.VNOTE_VER}}.dmg
+          sleep 1m
+          hdiutil create -srcfolder ./distrib/vnote -format UDBZ vnote-mac-x64_v${{env.VNOTE_VER}}.dmg
           cp vnote-mac-x64_v${{env.VNOTE_VER}}.dmg vnote-mac-x64.dmg
         working-directory: ${{runner.workspace}}/build
 

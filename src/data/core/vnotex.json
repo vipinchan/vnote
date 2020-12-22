@@ -3,13 +3,14 @@
     "metadata" : {
         "//comment": "When releasing new version, please go through the following configs to check if override is needed.",
         "//Comment": "markdown_editor#override_viewer_resource",
-        "version" : "3.0.0-beta.2"
+        "version" : "3.0.0-beta.3"
     },
     "core" : {
         "theme" : "native",
         "locale" : "",
         "shortcuts" : {
             "FullScreen" : "F11",
+            "StayOnTop" : "F10",
             "ExpandContentArea" : "Ctrl+G, E",
             "Settings" : "Ctrl+Alt+P",
             "NewNote" : "Ctrl+Alt+N",

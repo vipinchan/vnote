@@ -31,6 +31,7 @@
 #include "attachmentdragdropareaindicator.h"
 #include "exception.h"
 #include "findandreplacewidget.h"
+#include "editors/statuswidget.h"
 
 using namespace vnotex;
 
@@ -231,7 +232,7 @@ void ViewWindow::addBottomWidget(QWidget *p_widget)
     m_bottomLayout->addWidget(p_widget);
 }
 
-void ViewWindow::setStatusWidget(const QSharedPointer<QWidget> &p_widget)
+void ViewWindow::setStatusWidget(const QSharedPointer<StatusWidget> &p_widget)
 {
     m_statusWidget = p_widget;
     m_bottomLayout->insertWidget(0, p_widget.data());
@@ -282,36 +283,26 @@ QAction *ViewWindow::addAction(QToolBar *p_toolBar, ViewWindowToolBarHelper::Act
     case ViewWindowToolBarHelper::EditReadDiscard:
     {
         // A combined button with Edit/Read/Discard.
+        Q_ASSERT(!m_editReadDiscardAct);
         act = ViewWindowToolBarHelper::addAction(p_toolBar, p_action);
-        auto erdAct = dynamic_cast<EditReadDiscardAction *>(act);
-        Q_ASSERT(erdAct);
+        m_editReadDiscardAct = dynamic_cast<EditReadDiscardAction *>(act);
         connect(this, &ViewWindow::modeChanged,
-                this, [this, erdAct]() {
-                    updateEditReadDiscardActionState(erdAct);
+                this, [this]() {
+                    updateEditReadDiscardActionState(m_editReadDiscardAct);
                 });
-        connect(erdAct, QOverload<EditReadDiscardAction::Action>::of(&EditReadDiscardAction::triggered),
-                this, [this, erdAct](EditReadDiscardAction::Action p_act) {
-                    int ret = checkFileMissingOrChangedOutside();
-                    if (Normal != ret && SavedOrReloaded != ret) {
-                        // Recover the icon of the action.
-                        updateEditReadDiscardActionState(erdAct);
-                        return;
-                    }
-
+        connect(m_editReadDiscardAct, QOverload<EditReadDiscardAction::Action>::of(&EditReadDiscardAction::triggered),
+                this, [this](EditReadDiscardAction::Action p_act) {
                     switch (p_act) {
                     case EditReadDiscardAction::Action::Edit:
-                        setMode(Mode::Edit);
+                        edit();
                         break;
                     case EditReadDiscardAction::Action::Read:
-                        if (save(false)) {
-                            setMode(Mode::Read);
-                        }
+                        read(true);
                         break;
                     case EditReadDiscardAction::Action::Discard:
-                        discardChangesAndRead();
+                        read(false);
                         break;
                     }
-                    setFocus();
                 });
         break;
     }
@@ -409,7 +400,7 @@ QAction *ViewWindow::addAction(QToolBar *p_toolBar, ViewWindowToolBarHelper::Act
         act = ViewWindowToolBarHelper::addAction(p_toolBar, p_action);
         connect(act, &QAction::triggered,
                 this, [this]() {
-                    if (m_findAndReplace && m_findAndReplace->isVisible()) {
+                    if (findAndReplaceWidgetVisible()) {
                         hideFindAndReplaceWidget();
                     } else {
                         showFindAndReplaceWidget();
@@ -556,7 +547,7 @@ void ViewWindow::discardChangesAndRead()
     if (buffer->isModified()) {
         // Ask to save changes.
         int ret = MessageBoxHelper::questionSaveDiscardCancel(MessageBoxHelper::Question,
-                                                              tr("Discard changes to note %(1)?").arg(buffer->getName()),
+                                                              tr("Discard changes to note (%1)?").arg(buffer->getName()),
                                                               tr("Note path (%1).").arg(buffer->getPath()),
                                                               "",
                                                               this);
@@ -651,7 +642,7 @@ DragDropAreaIndicator *ViewWindow::getAttachmentDragDropArea()
     if (!m_attachmentDragDropIndicator) {
         m_attachmentDragDropIndicatorInterface.reset(new AttachmentDragDropAreaIndicator(this));
         m_attachmentDragDropIndicator = new DragDropAreaIndicator(m_attachmentDragDropIndicatorInterface.data(),
-                                                                  tr("Drag&Drop Files To Attach"),
+                                                                  tr("Drag And Drop Files To Attach"),
                                                                   this);
 
         m_attachmentDragDropIndicator->hide();
@@ -863,12 +854,12 @@ void ViewWindow::wheelEvent(QWheelEvent *p_event)
 
 void ViewWindow::showZoomFactor(qreal p_factor)
 {
-    VNoteX::getInst().showStatusMessageShort(tr("Zoomed: %1%").arg(p_factor * 100));
+    showMessage(tr("Zoomed: %1%").arg(p_factor * 100));
 }
 
 void ViewWindow::showZoomDelta(int p_delta)
 {
-    VNoteX::getInst().showStatusMessageShort(tr("Zoomed: %1%2").arg(p_delta > 0 ? "+" : "").arg(p_delta));
+    showMessage(tr("Zoomed: %1%2").arg(p_delta > 0 ? "+" : "").arg(p_delta));
 }
 
 void ViewWindow::showFindAndReplaceWidget()
@@ -928,18 +919,28 @@ bool ViewWindow::findAndReplaceWidgetVisible() const
 
 void ViewWindow::handleFindTextChanged(const QString &p_text, FindOptions p_options)
 {
+    Q_UNUSED(p_text);
+    Q_UNUSED(p_options);
 }
 
 void ViewWindow::handleFindNext(const QString &p_text, FindOptions p_options)
 {
+    Q_UNUSED(p_text);
+    Q_UNUSED(p_options);
 }
 
 void ViewWindow::handleReplace(const QString &p_text, FindOptions p_options, const QString &p_replaceText)
 {
+    Q_UNUSED(p_text);
+    Q_UNUSED(p_options);
+    Q_UNUSED(p_replaceText);
 }
 
 void ViewWindow::handleReplaceAll(const QString &p_text, FindOptions p_options, const QString &p_replaceText)
 {
+    Q_UNUSED(p_text);
+    Q_UNUSED(p_options);
+    Q_UNUSED(p_replaceText);
 }
 
 void ViewWindow::handleFindAndReplaceWidgetClosed()
@@ -993,19 +994,58 @@ void ViewWindow::replaceAll(const QString &p_text, FindOptions p_options, const 
 void ViewWindow::showFindResult(const QString &p_text, int p_totalMatches, int p_currentMatchIndex)
 {
     if (p_totalMatches == 0) {
-        VNoteX::getInst().showStatusMessageShort(tr("Pattern not found: %1").arg(p_text));
+        showMessage(tr("Pattern not found: %1").arg(p_text));
     } else {
-        VNoteX::getInst().showStatusMessageShort(tr("Match found: %1/%2").arg(p_currentMatchIndex + 1).arg(p_totalMatches));
+        showMessage(tr("Match found: %1/%2").arg(p_currentMatchIndex + 1).arg(p_totalMatches));
     }
 }
 
 void ViewWindow::showReplaceResult(const QString &p_text, int p_totalReplaces)
 {
     if (p_totalReplaces == 0) {
-        VNoteX::getInst().showStatusMessageShort(tr("Pattern not found: %1").arg(p_text));
+        showMessage(tr("Pattern not found: %1").arg(p_text));
     } else {
-        VNoteX::getInst().showStatusMessageShort(tr("Replaced %n match(es)", "", p_totalReplaces));
+        showMessage(tr("Replaced %n match(es)", "", p_totalReplaces));
     }
 }
 
+void ViewWindow::showMessage(const QString p_msg)
+{
+    if (m_statusWidget) {
+        m_statusWidget->showMessage(p_msg);
+    } else {
+        VNoteX::getInst().showStatusMessageShort(p_msg);
+    }
+}
 
+void ViewWindow::edit()
+{
+    int ret = checkFileMissingOrChangedOutside();
+    if (Normal != ret && SavedOrReloaded != ret) {
+        // Recover the icon of the action.
+        updateEditReadDiscardActionState(m_editReadDiscardAct);
+        return;
+    }
+
+    setMode(Mode::Edit);
+    setFocus();
+}
+
+void ViewWindow::read(bool p_save)
+{
+    int ret = checkFileMissingOrChangedOutside();
+    if (Normal != ret && SavedOrReloaded != ret) {
+        // Recover the icon of the action.
+        updateEditReadDiscardActionState(m_editReadDiscardAct);
+        return;
+    }
+
+    if (p_save) {
+        if (save(false)) {
+            setMode(Mode::Read);
+        }
+    } else {
+        discardChangesAndRead();
+    }
+    setFocus();
+}

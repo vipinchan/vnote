@@ -7,6 +7,7 @@ using namespace vnotex;
 
 #define READSTR(key) readString(appObj, userObj, (key))
 #define READINT(key) readInt(appObj, userObj, (key))
+#define READBOOL(key) readBool(appObj, userObj, (key))
 
 QStringList CoreConfig::s_availableLocales;
 

@@ -26,6 +26,7 @@ SOURCES += \
     $$PWD/editors/markdownviewer.cpp \
     $$PWD/editors/markdownvieweradapter.cpp \
     $$PWD/editors/previewhelper.cpp \
+    $$PWD/editors/statuswidget.cpp \
     $$PWD/editors/texteditor.cpp \
     $$PWD/editreaddiscardaction.cpp \
     $$PWD/filesystemviewer.cpp \
@@ -42,6 +43,7 @@ SOURCES += \
     $$PWD/outlineprovider.cpp \
     $$PWD/outlineviewer.cpp \
     $$PWD/propertydefs.cpp \
+    $$PWD/systemtrayhelper.cpp \
     $$PWD/textviewwindow.cpp \
     $$PWD/toolbarhelper.cpp \
     $$PWD/treeview.cpp \
@@ -72,6 +74,7 @@ SOURCES += \
     $$PWD/statusbarhelper.cpp \
     $$PWD/dialogs/deleteconfirmdialog.cpp \
     $$PWD/dialogs/importfolderutils.cpp \
+    $$PWD/titletoolbar.cpp \
     $$PWD/viewarea.cpp
 
 HEADERS += \
@@ -103,6 +106,7 @@ HEADERS += \
     $$PWD/editors/markdownviewer.h \
     $$PWD/editors/markdownvieweradapter.h \
     $$PWD/editors/previewhelper.h \
+    $$PWD/editors/statuswidget.h \
     $$PWD/editors/texteditor.h \
     $$PWD/editreaddiscardaction.h \
     $$PWD/filesystemviewer.h \
@@ -120,6 +124,7 @@ HEADERS += \
     $$PWD/outlineprovider.h \
     $$PWD/outlineviewer.h \
     $$PWD/propertydefs.h \
+    $$PWD/systemtrayhelper.h \
     $$PWD/textviewwindow.h \
     $$PWD/textviewwindowhelper.h \
     $$PWD/toolbarhelper.h \
@@ -151,4 +156,5 @@ HEADERS += \
     $$PWD/dialogs/nodeinfowidget.h \
     $$PWD/statusbarhelper.h \
     $$PWD/dialogs/deleteconfirmdialog.h \
+    $$PWD/titletoolbar.h \
     $$PWD/viewarea.h

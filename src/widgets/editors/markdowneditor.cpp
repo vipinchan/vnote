@@ -13,6 +13,7 @@
 #include <QShortcut>
 #include <QProgressDialog>
 #include <QTemporaryFile>
+#include <QTimer>
 
 #include <vtextedit/markdowneditorconfig.h>
 #include <vtextedit/previewmgr.h>
@@ -74,8 +75,13 @@ MarkdownEditor::MarkdownEditor(const MarkdownEditorConfig &p_config,
                 // TODO: insert heading sequence.
                 updateHeadings(p_headerRegions);
             });
-    connect(m_textEdit, &vte::VTextEdit::cursorLineChanged,
+
+    m_headingTimer = new QTimer(this);
+    m_headingTimer->setInterval(500);
+    connect(m_headingTimer, &QTimer::timeout,
             this, &MarkdownEditor::currentHeadingChanged);
+    connect(m_textEdit, &vte::VTextEdit::cursorLineChanged,
+            m_headingTimer, QOverload<>::of(&QTimer::start));
 }
 
 MarkdownEditor::~MarkdownEditor()
@@ -602,7 +608,7 @@ bool MarkdownEditor::processUrlFromMimeData(const QMimeData *p_source)
                 linkUrl = url.toString(QUrl::EncodeSpaces);
             }
 
-            LinkInsertDialog linkDialog(QObject::tr("Insert Link"), linkText, linkUrl, false, this);
+            LinkInsertDialog linkDialog(tr("Insert Link"), linkText, linkUrl, false, this);
             if (linkDialog.exec() == QDialog::Accepted) {
                 linkText = linkDialog.getLinkText();
                 linkUrl = linkDialog.getLinkUrl();
@@ -785,7 +791,13 @@ int MarkdownEditor::getHeadingIndexByBlockNumber(int p_blockNumber) const
         if (val == p_blockNumber) {
             return mid;
         } else if (val > p_blockNumber) {
+            // Skip the -1 headings.
+            // Bad case: [0, 2, 3, 43, 44, -1, 46, 60].
+            // If not skipped, [left, right] will be stuck at [4, 5].
             right = mid - 1;
+            while (right >= left && m_headings[right].m_blockNumber == -1) {
+                --right;
+            }
         } else {
             left = mid;
         }
@@ -794,7 +806,7 @@ int MarkdownEditor::getHeadingIndexByBlockNumber(int p_blockNumber) const
     if (m_headings[left].m_blockNumber <= p_blockNumber && m_headings[left].m_blockNumber != -1) {
         return left;
     }
-    // Find the last heading with block number not greater than @p_blockNumber.
+
     return -1;
 }
 
@@ -825,6 +837,18 @@ void MarkdownEditor::handleContextMenuEvent(QContextMenuEvent *p_event, bool *p_
         firstAct = actions.isEmpty() ? nullptr : actions.first();
         copyAct = WidgetUtils::findActionByObjectName(actions, "edit-copy");
         pasteAct = WidgetUtils::findActionByObjectName(actions, "edit-paste");
+    }
+
+    if (!m_textEdit->hasSelection()) {
+        auto readAct = new QAction(tr("&Read"), menu);
+        WidgetUtils::addActionShortcutText(readAct,
+                                           ConfigMgr::getInst().getEditorConfig().getShortcut(EditorConfig::Shortcut::EditRead));
+        connect(readAct, &QAction::triggered,
+                this, &MarkdownEditor::readRequested);
+        menu->insertAction(firstAct, readAct);
+        if (firstAct) {
+            menu->insertSeparator(firstAct);
+        }
     }
 
     if (pasteAct && pasteAct->isEnabled()) {
@@ -865,8 +889,8 @@ void MarkdownEditor::setupShortcuts()
         auto shortcut = WidgetUtils::createShortcut(editorConfig.getShortcut(EditorConfig::Shortcut::RichPaste),
                                                     this);
         if (shortcut) {
-            QObject::connect(shortcut, &QShortcut::activated,
-                             this, &MarkdownEditor::richPaste);
+            connect(shortcut, &QShortcut::activated,
+                    this, &MarkdownEditor::richPaste);
         }
     }
 }

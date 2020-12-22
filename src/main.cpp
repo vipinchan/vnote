@@ -8,6 +8,7 @@
 #include <QOpenGLContext>
 #include <QDateTime>
 #include <QSysInfo>
+#include <QProcess>
 
 #include <core/configmgr.h>
 #include <core/mainconfig.h>
@@ -20,7 +21,6 @@
 #include <QWebEngineSettings>
 #include <core/exception.h>
 #include <widgets/messageboxhelper.h>
-
 
 using namespace vnotex;
 
@@ -86,9 +86,9 @@ int main(int argc, char *argv[])
         app.setApplicationVersion(ConfigMgr::getInst().getConfig().getVersion());
     } catch (Exception &e) {
         MessageBoxHelper::notify(MessageBoxHelper::Critical,
-                                 QApplication::tr("%1 failed to start.").arg(ConfigMgr::c_appName),
-                                 QApplication::tr("Failed to initialize configuration manager. "
-                                                  "Please check if all the files are intact or reinstall the application."),
+                                 MainWindow::tr("%1 failed to start.").arg(ConfigMgr::c_appName),
+                                 MainWindow::tr("Failed to initialize configuration manager. "
+                                                "Please check if all the files are intact or reinstall the application."),
                                  e.what());
         return -1;
     }
@@ -110,14 +110,15 @@ int main(int argc, char *argv[])
 
     // TODO: parse command line options.
 
+    // Should set the correct locale before VNoteX::getInst().
+    loadTranslators(app);
+
     if (app.styleSheet().isEmpty()) {
         auto style = VNoteX::getInst().getThemeMgr().fetchQtStyleSheet();
         if (!style.isEmpty()) {
             app.setStyleSheet(style);
         }
     }
-
-    loadTranslators(app);
 
     MainWindow window;
 
@@ -127,6 +128,16 @@ int main(int argc, char *argv[])
     window.kickOffOnStart();
 
     int ret = app.exec();
+    if (ret == RESTART_EXIT_CODE) {
+        // Asked to restart VNote.
+        guard.exit();
+        QProcess::startDetached(QCoreApplication::applicationFilePath(), QStringList());
+        // Must use exit() in Linux to quit the parent process in Qt 5.12.
+        // Thanks to @ygcaicn.
+        exit(0);
+        return 0;
+    }
+
     return ret;
 }
 
@@ -140,15 +151,16 @@ void loadTranslators(QApplication &p_app)
     QLocale locale;
     qInfo() << "locale:" << locale.name();
 
-    const QString resourceTranslationFolder(QStringLiteral(":/translations"));
+    const QString resourceTranslationFolder(QStringLiteral(":/vnotex/data/core/translations"));
     const QString envTranslationFolder(QStringLiteral("translations"));
 
-    // Load missing translation for Qt (QTextEdit/QPlainTextEdit/QTextBrowser).
-    QScopedPointer<QTranslator> widgetsTranslator(new QTranslator(&p_app));
-    if (widgetsTranslator->load(locale, "widgets", "_", resourceTranslationFolder)) {
-        p_app.installTranslator(widgetsTranslator.take());
+    // For QTextEdit/QTextBrowser and other basic widgets.
+    QScopedPointer<QTranslator> qtbaseTranslator(new QTranslator(&p_app));
+    if (qtbaseTranslator->load(locale, "qtbase", "_", resourceTranslationFolder)) {
+        p_app.installTranslator(qtbaseTranslator.take());
     }
 
+    // qt_zh_CN.ts does not cover the real QDialogButtonBox which uses QPlatformTheme.
     QScopedPointer<QTranslator> dialogButtonBoxTranslator(new QTranslator(&p_app));
     if (dialogButtonBoxTranslator->load(locale, "qdialogbuttonbox", "_", resourceTranslationFolder)) {
         p_app.installTranslator(dialogButtonBoxTranslator.take());
@@ -169,6 +181,18 @@ void loadTranslators(QApplication &p_app)
     QScopedPointer<QTranslator> qtEnvTranslator(new QTranslator(&p_app));
     if (qtEnvTranslator->load(locale, "qt", "_", envTranslationFolder)) {
         p_app.installTranslator(qtEnvTranslator.take());
+    }
+
+    // Load translation for vnote from resource.
+    QScopedPointer<QTranslator> vnoteTranslator(new QTranslator(&p_app));
+    if (vnoteTranslator->load(locale, "vnote", "_", resourceTranslationFolder)) {
+        p_app.installTranslator(vnoteTranslator.take());
+    }
+
+    // Load translation for vtextedit from resource.
+    QScopedPointer<QTranslator> vtexteditTranslator(new QTranslator(&p_app));
+    if (vtexteditTranslator->load(locale, "vtextedit", "_", resourceTranslationFolder)) {
+        p_app.installTranslator(vtexteditTranslator.take());
     }
 }
 

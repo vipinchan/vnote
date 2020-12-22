@@ -15,6 +15,8 @@
 #include <QCoreApplication>
 #include <QApplication>
 #include <QShortcut>
+#include <QSystemTrayIcon>
+#include <QWindowStateChangeEvent>
 
 #include "toolbox.h"
 #include "notebookexplorer.h"
@@ -32,8 +34,9 @@
 #include "outlineviewer.h"
 #include <utils/widgetutils.h>
 #include "navigationmodemgr.h"
-
-#include <vtoolbar.h>
+#include "messageboxhelper.h"
+#include "systemtrayhelper.h"
+#include "titletoolbar.h"
 
 using namespace vnotex;
 
@@ -50,10 +53,8 @@ MainWindow::MainWindow(QWidget *p_parent)
 
     loadStateAndGeometry();
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
-    QApplication::setQuitOnLastWindowClosed(false);
-#endif
-
+    // The signal is particularly useful if your application has to do some last-second cleanup.
+    // Note that no user interaction is possible in this state.
     connect(qApp, &QCoreApplication::aboutToQuit,
             this, &MainWindow::closeOnQuit);
 }
@@ -82,6 +83,7 @@ void MainWindow::setupUI()
     setupDocks();
     setupToolBar();
     setupStatusBar();
+    setupSystemTray();
 
     activateDock(m_docks[DockIndex::NavigationDock]);
 }
@@ -280,23 +282,55 @@ void MainWindow::setupNotebookExplorer(QWidget *p_parent)
 
 void MainWindow::closeEvent(QCloseEvent *p_event)
 {
-    // TODO: support minimized to system tray.
+    const int toTray = ConfigMgr::getInst().getSessionConfig().getMinimizeToSystemTray();
+    bool isExit = m_requestQuit > -1 || toTray == 0;
+    const int exitCode = m_requestQuit;
+    m_requestQuit = -1;
+
+#if defined(Q_OS_MACOS)
+    // Do not support minimized to tray on macOS.
+    isExit = true;
+#endif
+
+    if(!isExit && toTray == -1){
+        int ret =  MessageBoxHelper::questionYesNo(MessageBoxHelper::Question,
+                                                   tr("Do you want to minimize %1 to system tray "
+                                                      "instead of quitting when closed?").arg(qApp->applicationName()),
+                                                   tr("You could change the option in Settings later."),
+                                                   QString(),
+                                                   this);
+        if (ret == QMessageBox::Yes) {
+            ConfigMgr::getInst().getSessionConfig().setMinimizeToSystemTray(true);
+        } else if (ret == QMessageBox::No) {
+            ConfigMgr::getInst().getSessionConfig().setMinimizeToSystemTray(false);
+            isExit = true;
+        } else {
+            p_event->ignore();
+            return;
+        }
+    }
 
     if (isVisible()) {
         saveStateAndGeometry();
     }
 
-    // Signal out the close event.
-    auto event = QSharedPointer<Event>::create();
-    event->m_response = true;
-    emit mainWindowClosed(event);
-    if (!event->m_response.toBool()) {
-        // Stop the close.
-        p_event->ignore();
-        return;
-    }
+    if (isExit || !m_trayIcon->isVisible()) {
+        // Signal out the close event.
+        auto event = QSharedPointer<Event>::create();
+        event->m_response = true;
+        emit mainWindowClosed(event);
+        if (!event->m_response.toBool()) {
+            // Stop the close.
+            p_event->ignore();
+            return;
+        }
 
-    QMainWindow::closeEvent(p_event);
+        QMainWindow::closeEvent(p_event);
+        qApp->exit(exitCode > -1 ? exitCode : 0);
+    } else {
+        hide();
+        p_event->ignore();
+    }
 }
 
 void MainWindow::saveStateAndGeometry()
@@ -412,7 +446,7 @@ void MainWindow::setupToolBar()
         winFlags &= ~framelessFlags;
         setWindowFlags(winFlags);
 
-        auto toolBar = new VToolBar(tr("Global"), this);
+        auto toolBar = new TitleToolBar(tr("Global"), this);
         toolBar->setIconSize(iconSize);
         m_toolBarHelper.setupToolBars(this, toolBar);
         toolBar->addTitleBarIcons(ToolBarHelper::generateIcon(QStringLiteral("minimize.svg")),
@@ -474,7 +508,7 @@ void MainWindow::setStayOnTop(bool p_enabled)
     bool shown = isVisible();
     Qt::WindowFlags flags = windowFlags();
 
-    Qt::WindowFlags magicFlag = Qt::WindowStaysOnTopHint;
+    const Qt::WindowFlags magicFlag = Qt::WindowStaysOnTopHint;
     if (p_enabled) {
         setWindowFlags(flags | magicFlag);
     } else {
@@ -484,4 +518,51 @@ void MainWindow::setStayOnTop(bool p_enabled)
     if (shown) {
         show();
     }
+}
+
+void MainWindow::setupSystemTray()
+{
+    m_trayIcon = SystemTrayHelper::setupSystemTray(this);
+    m_trayIcon->show();
+}
+
+void MainWindow::restart()
+{
+    m_requestQuit = RESTART_EXIT_CODE;
+    close();
+}
+
+void MainWindow::changeEvent(QEvent *p_event)
+{
+    if (p_event->type() == QEvent::WindowStateChange) {
+        QWindowStateChangeEvent *eve = static_cast<QWindowStateChangeEvent *>(p_event);
+        m_windowOldState = eve->oldState();
+    }
+
+    QMainWindow::changeEvent(p_event);
+}
+
+void MainWindow::showMainWindow()
+{
+    if (isMinimized()) {
+        if (m_windowOldState & Qt::WindowMaximized) {
+            showMaximized();
+        } else if (m_windowOldState & Qt::WindowFullScreen) {
+            showFullScreen();
+        } else {
+            showNormal();
+        }
+    } else {
+        show();
+        // Need to call raise() in macOS.
+        raise();
+    }
+
+    activateWindow();
+}
+
+void MainWindow::quitApp()
+{
+    m_requestQuit = 0;
+    close();
 }
